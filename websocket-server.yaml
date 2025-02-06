@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploy a Node.js WebSocket server with AWS Secrets Manager on EC2 (Region: us-east-1)"
+
+Parameters:
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "EC2 Key Pair for SSH access"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC where the instance should be launched"
+
+  SecretId:
+    Type: String
+    Default: "GitHubDeployKey"
+    Description: "Secrets Manager Secret ID storing the GitHub Deploy Key"
+
+  GitHubRepoURL:
+    Type: String
+    Description: "GitHub repository URL of the Node.js WebSocket app"
+
+  AppDirectory:
+    Type: String
+    Default: "."
+    Description: "The directory inside the GitHub repository where the app is located"
+
+Resources:
+  ## ✅ IAM Role for Lambda (to Fetch Latest AMI)
+  AmiLookupLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "AmiLookupLambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "EC2DescribeImagesPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "ec2:DescribeImages"
+                Resource: "*"
+
+  ## ✅ Lambda Function to Fetch Latest Amazon Linux 2 AMI in us-east-1
+  LatestAmiLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetLatestAmazonLinuxAmi
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt AmiLookupLambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              ec2_client = boto3.client("ec2", region_name="us-east-1")
+              response = ec2_client.describe_images(
+                  Filters=[
+                      {"Name": "name", "Values": ["amzn2-ami-hvm-*-x86_64-gp2"]},
+                      {"Name": "state", "Values": ["available"]}
+                  ],
+                  Owners=["amazon"]
+              )
+              latest_image = sorted(response["Images"], key=lambda x: x["CreationDate"], reverse=True)[0]
+              response_data = {"ImageId": latest_image["ImageId"]}
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+
+  ## ✅ Custom Resource to Retrieve AMI ID
+  AmiLookup:
+    Type: Custom::AMI
+    Properties:
+      ServiceToken: !GetAtt LatestAmiLambdaFunction.Arn
+
+  ## ✅ IAM Role for EC2 with Secrets Manager Access
+  WebServerIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "WebSocketServerRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "SecretsManagerAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "secretsmanager:GetSecretValue"
+                Resource: !Sub "arn:aws:secretsmanager:us-east-1:${AWSAccountId}:secret:${SecretId}*"
+
+  ## ✅ Instance Profile (Attach IAM Role to EC2)
+  WebServerInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - !Ref WebServerIAMRole
+
+  ## ✅ Security Group for WebSocket & HTTP Traffic
+  WebServerSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Allow WebSocket and HTTP(S) traffic"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 8080  # WebSocket Port
+          ToPort: 8080
+          CidrIp: "0.0.0.0/0"
+
+  ## ✅ EC2 Instance (Runs WebSocket Server)
+  WebServerInstance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: "t3.micro"
+      ImageId: !GetAtt AmiLookup.ImageId  # ✅ Fetch latest Amazon Linux 2 AMI
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref WebServerInstanceProfile
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash
+            sudo yum update -y
+            sudo yum install -y nodejs git
+
+            # Retrieve SSH Private Key from AWS Secrets Manager
+            SECRET_KEY=$(aws secretsmanager get-secret-value --secret-id ${SecretId} --query SecretString --output text)
+
+            # Store it in ~/.ssh/
+            mkdir -p /root/.ssh
+            echo "$SECRET_KEY" > /root/.ssh/deploy_key
+            chmod 600 /root/.ssh/deploy_key
+            ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts
+
+            # Clone the private GitHub repository using SSH
+            GIT_SSH_COMMAND="ssh -i /root/.ssh/deploy_key -o StrictHostKeyChecking=no" git clone git@github.com:${GitHubRepoURL}.git
+            cd ${AppDirectory}
+            npm install
+
+            # Start the WebSocket server
+            nohup node app.js > server.log 2>&1 &
+
+  ## ✅ Elastic IP (Optional: Attach a Static IP to the EC2 Instance)
+  WebServerEIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      InstanceId: !Ref WebServerInstance
+
+Outputs:
+  WebServerPublicIP:
+    Description: "Public IP of the WebSocket server"
+    Value: !Ref WebServerEIP
