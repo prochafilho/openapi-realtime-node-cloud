@@ -16,7 +16,7 @@ Parameters:
     Description: "AWS region where AMI lookup will be performed"
 
 Resources:
-  ## ✅ IAM Role for Lambda to Fetch Latest AMI
+  ## ✅ IAM Role for Lambda
   AmiLookupLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -37,7 +37,7 @@ Resources:
                 Action: "ec2:DescribeImages"
                 Resource: "*"
 
-  ## ✅ Lambda Function to Fetch Latest Amazon Linux 2 AMI
+  ## ✅ Lambda Function with DELETE Handling
   LatestAmiLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -53,6 +53,12 @@ Resources:
           import cfnresponse
 
           def lambda_handler(event, context):
+              request_type = event.get("RequestType", "Create")
+
+              if request_type == "Delete":
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  return
+
               ec2_client = boto3.client("ec2", region_name="us-east-1")
               response = ec2_client.describe_images(
                   Filters=[
@@ -65,7 +71,7 @@ Resources:
               response_data = {"ImageId": latest_image["ImageId"]}
               cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
 
-  ## ✅ Custom Resource to Retrieve AMI ID
+  ## ✅ Custom Resource
   AmiLookup:
     Type: Custom::AMI
     Properties:

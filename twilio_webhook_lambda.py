@@ -24,7 +24,7 @@ def send_signal_to_cfn(event, context, status, reason=""):
         print(f"Failed to send signal: {str(e)}")
 
 def delete_twilio_webhook():
-    """Deregister the webhook from Twilio when stack is deleted"""
+    """Deregister the webhook from Twilio"""
     twilio_account_sid = os.environ["TWILIO_ACCOUNT_SID"]
     twilio_auth_token = os.environ["TWILIO_AUTH_TOKEN"]
     twilio_phone_number = os.environ["TWILIO_PHONE_NUMBER"]
@@ -33,7 +33,6 @@ def delete_twilio_webhook():
     auth = (twilio_account_sid, twilio_auth_token)
 
     try:
-        # Get phone number SID
         response = requests.get(url, auth=auth)
         response.raise_for_status()
         phone_numbers = response.json()["incoming_phone_numbers"]
