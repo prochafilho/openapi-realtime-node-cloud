@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Registers Twilio webhook with WebSocket server and properly deletes it when stack is removed"
+
+Parameters:
+  UniqueSuffix:
+    Type: String
+    Description: "Unique identifier for this deployment"
+
+  Region:
+    Type: String
+    Default: "us-east-1"
+    Description: "AWS region where resources will be deployed"
+
+  WebSocketPublicIP:
+    Type: String
+    Description: "Public IP of WebSocket server"
+
+  TwilioLambdaArn:
+    Type: String
+    Description: "ARN of the Twilio Webhook Lambda function"
+
+Resources:
+  TwilioWebhookWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  TwilioWebhookRegistration:
+    Type: Custom::TwilioWebhook
+    Properties:
+      ServiceToken: !Ref TwilioLambdaArn
+      WebSocketPublicIP: !Ref WebSocketPublicIP
+      WaitHandle: !Ref TwilioWebhookWaitHandle
+
+  TwilioWebhookWaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Handle: !Ref TwilioWebhookWaitHandle
+      Timeout: "300"
+    DependsOn: TwilioWebhookRegistration
+
+Outputs:
+  TwilioWebhookStatus:
+    Description: "Status of Twilio Webhook Registration"
+    Value: "Webhook registered successfully"

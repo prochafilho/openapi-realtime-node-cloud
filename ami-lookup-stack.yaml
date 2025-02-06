@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Custom Resource Stack to Retrieve Latest Amazon Linux 2 AMI"
+
+Parameters:
+  UniqueSuffix:
+    Type: String
+    Description: "Unique identifier for this deployment"
+
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
+  Region:
+    Type: String
+    Default: "us-east-1"
+    Description: "AWS region where AMI lookup will be performed"
+
+Resources:
+  ## ✅ IAM Role for Lambda to Fetch Latest AMI
+  AmiLookupLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AmiLookupLambdaExecutionRole-${UniqueSuffix}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "EC2DescribeImagesPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "ec2:DescribeImages"
+                Resource: "*"
+
+  ## ✅ Lambda Function to Fetch Latest Amazon Linux 2 AMI
+  LatestAmiLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "GetLatestAmazonLinuxAmi-${UniqueSuffix}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt AmiLookupLambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              ec2_client = boto3.client("ec2", region_name="us-east-1")
+              response = ec2_client.describe_images(
+                  Filters=[
+                      {"Name": "name", "Values": ["amzn2-ami-hvm-*-x86_64-gp2"]},
+                      {"Name": "state", "Values": ["available"]}
+                  ],
+                  Owners=["amazon"]
+              )
+              latest_image = sorted(response["Images"], key=lambda x: x["CreationDate"], reverse=True)[0]
+              response_data = {"ImageId": latest_image["ImageId"]}
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+
+  ## ✅ Custom Resource to Retrieve AMI ID
+  AmiLookup:
+    Type: Custom::AMI
+    Properties:
+      ServiceToken: !GetAtt LatestAmiLambdaFunction.Arn
+
+Outputs:
+  LatestAmazonLinuxAmi:
+    Description: "Latest Amazon Linux 2 AMI ID"
+    Value: !GetAtt AmiLookup.ImageId

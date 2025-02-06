@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Main stack managing WebSocket server and Twilio integration"
+
+Parameters:
+  UniqueSuffix:
+    Type: String
+    Description: "Unique identifier for this deployment"
+
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
+  Region:
+    Type: String
+    Default: "us-east-1"
+    Description: "AWS region where resources will be deployed"
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "EC2 Key Pair for SSH access"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC where the instance should be launched"
+
+  SecretId:
+    Type: String
+    Description: "Secrets Manager Secret ID storing the GitHub Deploy Key"
+
+  GitHubRepoURL:
+    Type: String
+    Description: "GitHub repository URL of the WebSocket app"
+
+  AppDirectory:
+    Type: String
+    Default: "."
+    Description: "Directory inside the GitHub repository"
+
+  TwilioAccountSid:
+    Type: String
+    Description: "Twilio Account SID"
+
+  TwilioAuthToken:
+    Type: String
+    Description: "Twilio Auth Token"
+
+  TwilioPhoneNumber:
+    Type: String
+    Description: "Twilio Phone Number"
+
+  S3Bucket:
+    Type: String
+    Description: "S3 Bucket containing CloudFormation templates"
+
+Resources:
+  WebSocketServerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/websocket-server-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+        KeyPairName: !Ref KeyPairName
+        VpcId: !Ref VpcId
+        SecretId: !Ref SecretId
+        GitHubRepoURL: !Ref GitHubRepoURL
+        AppDirectory: !Ref AppDirectory
+
+  TwilioLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-lambda-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        Region: !Ref Region
+        S3Bucket: !Ref S3Bucket
+        TwilioAccountSid: !Ref TwilioAccountSid
+        TwilioAuthToken: !Ref TwilioAuthToken
+        TwilioPhoneNumber: !Ref TwilioPhoneNumber
+
+  TwilioIntegrationStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [WebSocketServerStack, TwilioLambdaStack]
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-integration-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        Region: !Ref Region
+        WebSocketPublicIP: !GetAtt WebSocketServerStack.Outputs.WebSocketPublicIP
+        TwilioLambdaArn: !GetAtt TwilioLambdaStack.Outputs.TwilioWebhookLambdaArn

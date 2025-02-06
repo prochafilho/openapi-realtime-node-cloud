@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Twilio Webhook Lambda function"
+
+Parameters:
+  S3Bucket:
+    Type: String
+    Description: "S3 Bucket containing Lambda function"
+
+  TwilioAccountSid:
+    Type: String
+    Description: "Twilio Account SID"
+
+  TwilioAuthToken:
+    Type: String
+    Description: "Twilio Auth Token"
+
+  TwilioPhoneNumber:
+    Type: String
+    Description: "Twilio Phone Number"
+
+Resources:
+  TwilioWebhookLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "RegisterTwilioWebhook"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt TwilioLambdaExecutionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
+          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
+          TWILIO_PHONE_NUMBER: !Ref TwilioPhoneNumber
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: "twilio-webhook-lambda.zip"
+
+Outputs:
+  TwilioWebhookLambdaArn:
+    Description: "ARN of the Twilio Webhook Lambda function"
+    Value: !GetAtt TwilioWebhookLambda.Arn

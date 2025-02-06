@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys WebSocket server on EC2 with dynamic AMI lookup"
+
+Parameters:
+  UniqueSuffix:
+    Type: String
+    Description: "Unique identifier for this deployment"
+
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
+  Region:
+    Type: String
+    Default: "us-east-1"
+    Description: "AWS region where resources will be deployed"
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "EC2 Key Pair for SSH access"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC where the instance should be launched"
+
+  SecretId:
+    Type: String
+    Description: "Secrets Manager Secret ID storing the GitHub Deploy Key"
+
+  GitHubRepoURL:
+    Type: String
+    Description: "GitHub repository URL of the WebSocket app"
+
+  AppDirectory:
+    Type: String
+    Default: "."
+    Description: "Directory inside the GitHub repository"
+
+  AmiStackName:
+    Type: String
+    Description: "Name of the AMI Lookup Stack"
+
+Resources:
+  ## ✅ Fetch the AMI ID from the AMI Lookup Stack
+  AmiLookupStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/ami-lookup-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+
+  WebServerInstance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: "t3.micro"
+      ImageId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y nodejs git
+          cd /home/ec2-user
+          SECRET_KEY=$(aws secretsmanager get-secret-value --secret-id ${SecretId} --query SecretString --output text)
+          echo "$SECRET_KEY" > /root/.ssh/deploy_key
+          chmod 600 /root/.ssh/deploy_key
+          ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts
+          GIT_SSH_COMMAND="ssh -i /root/.ssh/deploy_key -o StrictHostKeyChecking=no" git clone git@github.com:${GitHubRepoURL}.git
+          cd ${AppDirectory}
+          npm install
+          nohup node app.js > server.log 2>&1 &
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServerInstance --region ${AWS::Region} ${WebServerWaitHandle}
+
+Outputs:
+  WebSocketPublicIP:
+    Description: "Public IP of the WebSocket server"
+    Value: !Ref WebServerInstance
