@@ -37,7 +37,7 @@ Resources:
                 Action: "ec2:DescribeImages"
                 Resource: "*"
 
-  ## ✅ Lambda Function with DELETE Handling
+  ## ✅ Lambda Function to Fetch Latest AMI
   LatestAmiLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:

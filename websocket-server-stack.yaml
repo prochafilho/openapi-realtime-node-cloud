@@ -38,19 +38,13 @@ Parameters:
 
   S3Bucket:
     Type: String
-    Description: "S3 Bucket where the AMI Lookup stack is stored"
+    Description: "S3 Bucket where CloudFormation templates are stored"
+
+  AmiId:
+    Type: String
+    Description: "Amazon Linux 2 AMI ID retrieved dynamically"
 
 Resources:
-  ## ✅ Fetch the AMI ID from the AMI Lookup Stack
-  AmiLookupStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/ami-lookup-stack.yaml"
-      Parameters:
-        UniqueSuffix: !Ref UniqueSuffix
-        AWSAccountId: !Ref AWSAccountId
-        Region: !Ref Region
-
   ## ✅ Security Group for WebSocket Server
   WebServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -76,7 +70,7 @@ Resources:
     Type: "AWS::EC2::Instance"
     Properties:
       InstanceType: "t3.micro"
-      ImageId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
+      ImageId: !Ref AmiId  # Dynamic AMI ID from AMI Lookup Stack
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
         - !Ref WebServerSecurityGroup

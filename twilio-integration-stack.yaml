@@ -6,6 +6,10 @@ Parameters:
     Type: String
     Description: "Unique identifier for this deployment"
 
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
   Region:
     Type: String
     Default: "us-east-1"
@@ -20,9 +24,11 @@ Parameters:
     Description: "ARN of the Twilio Webhook Lambda function"
 
 Resources:
+  ## ✅ Wait Condition Handle for CloudFormation
   TwilioWebhookWaitHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
 
+  ## ✅ Twilio Webhook Custom Resource
   TwilioWebhookRegistration:
     Type: Custom::TwilioWebhook
     Properties:
@@ -30,6 +36,7 @@ Resources:
       WebSocketPublicIP: !Ref WebSocketPublicIP
       WaitHandle: !Ref TwilioWebhookWaitHandle
 
+  ## ✅ Wait Condition to Ensure Twilio Webhook Completes Before Stack Proceeds
   TwilioWebhookWaitCondition:
     Type: AWS::CloudFormation::WaitCondition
     Properties:

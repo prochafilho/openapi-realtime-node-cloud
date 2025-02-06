@@ -2,9 +2,22 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "Deploys Twilio Webhook Lambda function"
 
 Parameters:
+  UniqueSuffix:
+    Type: String
+    Description: "Unique identifier for this deployment"
+
+  AWSAccountId:
+    Type: String
+    Description: "Your AWS Account ID"
+
+  Region:
+    Type: String
+    Default: "us-east-1"
+    Description: "AWS region where resources will be deployed"
+
   S3Bucket:
     Type: String
-    Description: "S3 Bucket containing Lambda function"
+    Description: "S3 Bucket where the Lambda function is stored"
 
   TwilioAccountSid:
     Type: String
@@ -19,10 +32,35 @@ Parameters:
     Description: "Twilio Phone Number"
 
 Resources:
+  ## ✅ IAM Role for Lambda
+  TwilioLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "TwilioLambdaExecutionRole-${UniqueSuffix}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "TwilioWebhookLambdaPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+
+  ## ✅ Twilio Webhook Lambda Function
   TwilioWebhookLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: "RegisterTwilioWebhook"
+      FunctionName: !Sub "RegisterTwilioWebhook-${UniqueSuffix}"
       Runtime: python3.9
       Handler: index.lambda_handler
       Role: !GetAtt TwilioLambdaExecutionRole.Arn
@@ -35,6 +73,18 @@ Resources:
       Code:
         S3Bucket: !Ref S3Bucket
         S3Key: "twilio-webhook-lambda.zip"
+
+  ## ✅ Wait Condition Handle for CloudFormation
+  TwilioWebhookWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  ## ✅ Wait Condition to Ensure Lambda Completes Before Stack Proceeds
+  TwilioWebhookWaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Handle: !Ref TwilioWebhookWaitHandle
+      Timeout: "300"
+    DependsOn: TwilioWebhookLambda
 
 Outputs:
   TwilioWebhookLambdaArn:
