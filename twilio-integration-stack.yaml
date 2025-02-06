@@ -23,6 +23,10 @@ Parameters:
     Type: String
     Description: "ARN of the Twilio Webhook Lambda function"
 
+  S3Bucket:
+    Type: String
+    Description: "S3 Bucket containing CloudFormation templates"
+
 Resources:
   ## ✅ Wait Condition Handle for CloudFormation
   TwilioWebhookWaitHandle:
@@ -35,6 +39,7 @@ Resources:
       ServiceToken: !Ref TwilioLambdaArn
       WebSocketPublicIP: !Ref WebSocketPublicIP
       WaitHandle: !Ref TwilioWebhookWaitHandle
+      S3Bucket: !Ref S3Bucket
 
   ## ✅ Wait Condition to Ensure Twilio Webhook Completes Before Stack Proceeds
   TwilioWebhookWaitCondition:

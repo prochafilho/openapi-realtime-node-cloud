@@ -15,6 +15,10 @@ Parameters:
     Default: "us-east-1"
     Description: "AWS region where AMI lookup will be performed"
 
+  S3Bucket:
+    Type: String
+    Description: "S3 Bucket where CloudFormation templates are stored"
+
 Resources:
   ## ✅ IAM Role for Lambda
   AmiLookupLambdaExecutionRole:
@@ -47,29 +51,8 @@ Resources:
       Role: !GetAtt AmiLookupLambdaExecutionRole.Arn
       Timeout: 30
       Code:
-        ZipFile: |
-          import json
-          import boto3
-          import cfnresponse
-
-          def lambda_handler(event, context):
-              request_type = event.get("RequestType", "Create")
-
-              if request_type == "Delete":
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-                  return
-
-              ec2_client = boto3.client("ec2", region_name="us-east-1")
-              response = ec2_client.describe_images(
-                  Filters=[
-                      {"Name": "name", "Values": ["amzn2-ami-hvm-*-x86_64-gp2"]},
-                      {"Name": "state", "Values": ["available"]}
-                  ],
-                  Owners=["amazon"]
-              )
-              latest_image = sorted(response["Images"], key=lambda x: x["CreationDate"], reverse=True)[0]
-              response_data = {"ImageId": latest_image["ImageId"]}
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+        S3Bucket: !Ref S3Bucket
+        S3Key: "ami-lookup-lambda.zip"
 
   ## ✅ Custom Resource
   AmiLookup:

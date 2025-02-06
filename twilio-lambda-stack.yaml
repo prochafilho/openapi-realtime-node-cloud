@@ -17,7 +17,7 @@ Parameters:
 
   S3Bucket:
     Type: String
-    Description: "S3 Bucket where the Lambda function is stored"
+    Description: "S3 Bucket where CloudFormation templates are stored"
 
   TwilioAccountSid:
     Type: String

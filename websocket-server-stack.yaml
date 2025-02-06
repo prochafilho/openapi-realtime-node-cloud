@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Deploys WebSocket server on EC2 with dynamic AMI lookup"
+Description: "Main stack managing WebSocket server, AMI Lookup, and Twilio integration"
 
 Parameters:
   UniqueSuffix:
@@ -36,72 +36,76 @@ Parameters:
     Default: "."
     Description: "Directory inside the GitHub repository"
 
+  TwilioAccountSid:
+    Type: String
+    Description: "Twilio Account SID"
+
+  TwilioAuthToken:
+    Type: String
+    Description: "Twilio Auth Token"
+
+  TwilioPhoneNumber:
+    Type: String
+    Description: "Twilio Phone Number"
+
   S3Bucket:
     Type: String
-    Description: "S3 Bucket where CloudFormation templates are stored"
-
-  AmiId:
-    Type: String
-    Description: "Amazon Linux 2 AMI ID retrieved dynamically"
+    Description: "S3 Bucket containing CloudFormation templates"
 
 Resources:
-  ## ✅ Security Group for WebSocket Server
-  WebServerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  ## ✅ AMI Lookup Stack
+  AmiLookupStack:
+    Type: AWS::CloudFormation::Stack
     Properties:
-      GroupDescription: "Allow WebSocket and HTTP(S) traffic"
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: "tcp"
-          FromPort: 80
-          ToPort: 80
-          CidrIp: "0.0.0.0/0"
-        - IpProtocol: "tcp"
-          FromPort: 443
-          ToPort: 443
-          CidrIp: "0.0.0.0/0"
-        - IpProtocol: "tcp"
-          FromPort: 8080  # WebSocket Port
-          ToPort: 8080
-          CidrIp: "0.0.0.0/0"
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/ami-lookup-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+        S3Bucket: !Ref S3Bucket
 
-  ## ✅ WebSocket Server Instance
-  WebServerInstance:
-    Type: "AWS::EC2::Instance"
+  ## ✅ WebSocket Server Stack
+  WebSocketServerStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: AmiLookupStack
     Properties:
-      InstanceType: "t3.micro"
-      ImageId: !Ref AmiId  # Dynamic AMI ID from AMI Lookup Stack
-      KeyName: !Ref KeyPairName
-      SecurityGroupIds:
-        - !Ref WebServerSecurityGroup
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          sudo yum update -y
-          sudo yum install -y nodejs git
-          cd /home/ec2-user
-          SECRET_KEY=$(aws secretsmanager get-secret-value --secret-id ${SecretId} --query SecretString --output text)
-          echo "$SECRET_KEY" > /root/.ssh/deploy_key
-          chmod 600 /root/.ssh/deploy_key
-          ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts
-          GIT_SSH_COMMAND="ssh -i /root/.ssh/deploy_key -o StrictHostKeyChecking=no" git clone git@github.com:${GitHubRepoURL}.git
-          cd ${AppDirectory}
-          npm install
-          nohup node app.js > server.log 2>&1 &
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServerInstance --region ${AWS::Region} ${WebServerWaitHandle}
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/websocket-server-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+        KeyPairName: !Ref KeyPairName
+        VpcId: !Ref VpcId
+        SecretId: !Ref SecretId
+        GitHubRepoURL: !Ref GitHubRepoURL
+        AppDirectory: !Ref AppDirectory
+        AmiId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
+        S3Bucket: !Ref S3Bucket
 
-  ## ✅ Wait Condition to Ensure Web Server Setup Completes
-  WebServerWaitHandle:
-    Type: AWS::CloudFormation::WaitConditionHandle
-
-  WebServerWaitCondition:
-    Type: AWS::CloudFormation::WaitCondition
+  ## ✅ Twilio Lambda Stack
+  TwilioLambdaStack:
+    Type: AWS::CloudFormation::Stack
     Properties:
-      Handle: !Ref WebServerWaitHandle
-      Timeout: "600"
-      Count: 1
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-lambda-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+        S3Bucket: !Ref S3Bucket
+        TwilioAccountSid: !Ref TwilioAccountSid
+        TwilioAuthToken: !Ref TwilioAuthToken
+        TwilioPhoneNumber: !Ref TwilioPhoneNumber
 
-Outputs:
-  WebSocketPublicIP:
-    Description: "Public IP of the WebSocket server"
-    Value: !Ref WebServerInstance
+  ## ✅ Twilio Integration Stack
+  TwilioIntegrationStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [WebSocketServerStack, TwilioLambdaStack]
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-integration-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+        WebSocketPublicIP: !GetAtt WebSocketServerStack.Outputs.WebSocketPublicIP
+        TwilioLambdaArn: !GetAtt TwilioLambdaStack.Outputs.TwilioWebhookLambdaArn
+        S3Bucket: !Ref S3Bucket

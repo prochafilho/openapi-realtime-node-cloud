@@ -53,7 +53,7 @@ Parameters:
     Description: "S3 Bucket containing CloudFormation templates"
 
 Resources:
-  ## ✅ AMI Lookup Stack
+  ## ✅ AMI Lookup Stack (Ensures EC2 Instances Get the Latest Amazon Linux 2 AMI)
   AmiLookupStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -62,6 +62,7 @@ Resources:
         UniqueSuffix: !Ref UniqueSuffix
         AWSAccountId: !Ref AWSAccountId
         Region: !Ref Region
+        S3Bucket: !Ref S3Bucket
 
   ## ✅ WebSocket Server Stack (Depends on AMI Lookup)
   WebSocketServerStack:
@@ -79,8 +80,9 @@ Resources:
         GitHubRepoURL: !Ref GitHubRepoURL
         AppDirectory: !Ref AppDirectory
         AmiId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
+        S3Bucket: !Ref S3Bucket
 
-  ## ✅ Twilio Lambda Stack
+  ## ✅ Twilio Lambda Stack (Deploys Lambda to Manage Twilio Webhook)
   TwilioLambdaStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -94,7 +96,7 @@ Resources:
         TwilioAuthToken: !Ref TwilioAuthToken
         TwilioPhoneNumber: !Ref TwilioPhoneNumber
 
-  ## ✅ Twilio Integration Stack
+  ## ✅ Twilio Integration Stack (Depends on WebSocket Server & Twilio Lambda)
   TwilioIntegrationStack:
     Type: AWS::CloudFormation::Stack
     DependsOn: [WebSocketServerStack, TwilioLambdaStack]
@@ -106,3 +108,4 @@ Resources:
         Region: !Ref Region
         WebSocketPublicIP: !GetAtt WebSocketServerStack.Outputs.WebSocketPublicIP
         TwilioLambdaArn: !GetAtt TwilioLambdaStack.Outputs.TwilioWebhookLambdaArn
+        S3Bucket: !Ref S3Bucket
