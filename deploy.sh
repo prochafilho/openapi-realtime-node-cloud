@@ -8,7 +8,7 @@ AWS_REGION="us-east-1"
 
 # AWS Parameters
 GITHUB_REPO_URL="prochafilho/openai-realtime-api-node"
-APP_DIRECTORY="."
+APP_DIRECTORY="your-app-directory"
 KEY_PAIR_NAME="websocket-key"
 
 echo "🚀 Deploying CloudFormation stacks with unique suffix: $UNIQUE_SUFFIX"
@@ -37,7 +37,7 @@ aws s3 cp twilio-integration-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp ami-lookup-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp twilio-webhook-lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION
 
-# 🚀 Step 4: Deploy Main CloudFormation Stack (Includes AMI Lookup)
+# 🚀 Step 4: Deploy Main CloudFormation Stack
 echo "🔹 Deploying Main CloudFormation Stack: $STACK_NAME..."
 aws cloudformation create-stack --stack-name $STACK_NAME \
     --template-url https://s3.$AWS_REGION.amazonaws.com/$APP_BUCKET/main-stack.yaml \

@@ -6,7 +6,11 @@ import urllib.request
 
 def send_signal_to_cfn(event, context, status, reason=""):
     """Send SUCCESS or FAILED signal to CloudFormation"""
-    wait_handle_url = event["ResourceProperties"]["WaitHandle"]
+    wait_handle_url = event["ResourceProperties"].get("WaitHandle", "")
+    if not wait_handle_url:
+        print("No WaitHandle URL provided. Skipping CloudFormation signal.")
+        return
+
     data = json.dumps({
         "Status": status,
         "Reason": reason,
@@ -24,7 +28,7 @@ def send_signal_to_cfn(event, context, status, reason=""):
         print(f"Failed to send signal: {str(e)}")
 
 def delete_twilio_webhook():
-    """Deregister the webhook from Twilio"""
+    """Deregister the webhook from Twilio when stack is deleted"""
     twilio_account_sid = os.environ["TWILIO_ACCOUNT_SID"]
     twilio_auth_token = os.environ["TWILIO_AUTH_TOKEN"]
     twilio_phone_number = os.environ["TWILIO_PHONE_NUMBER"]

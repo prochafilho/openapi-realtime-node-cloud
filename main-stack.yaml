@@ -53,7 +53,7 @@ Parameters:
     Description: "S3 Bucket containing CloudFormation templates"
 
 Resources:
-  ## ✅ AMI Lookup Stack (New)
+  ## ✅ AMI Lookup Stack
   AmiLookupStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -87,6 +87,7 @@ Resources:
       TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-lambda-stack.yaml"
       Parameters:
         UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
         Region: !Ref Region
         S3Bucket: !Ref S3Bucket
         TwilioAccountSid: !Ref TwilioAccountSid
@@ -101,6 +102,7 @@ Resources:
       TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-integration-stack.yaml"
       Parameters:
         UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
         Region: !Ref Region
         WebSocketPublicIP: !GetAtt WebSocketServerStack.Outputs.WebSocketPublicIP
         TwilioLambdaArn: !GetAtt TwilioLambdaStack.Outputs.TwilioWebhookLambdaArn
