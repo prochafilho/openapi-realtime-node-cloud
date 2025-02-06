@@ -8,7 +8,7 @@ AWS_REGION="us-east-1"
 
 # AWS Parameters
 GITHUB_REPO_URL="prochafilho/openai-realtime-api-node"
-APP_DIRECTORY="your-app-directory"
+APP_DIRECTORY="."
 KEY_PAIR_NAME="websocket-key"
 
 echo "🚀 Deploying CloudFormation stacks with unique suffix: $UNIQUE_SUFFIX"
@@ -28,6 +28,15 @@ if [ ! -f "twilio-webhook-lambda.zip" ]; then
     zip twilio-webhook-lambda.zip twilio_webhook_lambda.py
 fi
 
+# ✅ Ensure the AMI Lookup Lambda ZIP file exists
+if [ -f "ami_lookup_lambda.py" ]; then
+    echo "🚀 Creating AMI Lookup Lambda package ami_lookup_lambda.zip..."
+    zip ami_lookup_lambda.zip ami_lookup_lambda.py
+else
+    echo "❌ ERROR: ami_lookup_lambda.py not found! Deployment aborted."
+    exit 1
+fi
+
 # 🚀 Step 3: Upload CloudFormation Templates & Lambda Code to S3
 echo "🔹 Uploading CloudFormation templates to S3..."
 aws s3 cp main-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
@@ -36,6 +45,7 @@ aws s3 cp twilio-lambda-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp twilio-integration-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp ami-lookup-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp twilio-webhook-lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION
+aws s3 cp ami_lookup_lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION  # ✅ Fix: Ensured correct naming
 
 # 🚀 Step 4: Deploy Main CloudFormation Stack
 echo "🔹 Deploying Main CloudFormation Stack: $STACK_NAME..."
@@ -67,11 +77,23 @@ echo "🔹 Fetching WebSocket Server Public IP..."
 WEBSOCKET_PUBLIC_IP=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --region $AWS_REGION --query "Stacks[0].Outputs[?OutputKey=='WebSocketPublicIP'].OutputValue" --output text)
 echo "🔹 WebSocket Public IP: $WEBSOCKET_PUBLIC_IP"
 
-# 🚀 Step 7: Cleanup - Delete the CloudFormation Stack
+# 🚀 Step 7: Testing WebSocket Server Connection (Optional)
+echo "🔹 Testing WebSocket server connection..."
+npm install -g wscat
+wscat -c ws://$WEBSOCKET_PUBLIC_IP:8080
+
+# 🚀 Step 8: Validate Twilio Webhook Registration
+echo "🔹 Checking Twilio Webhook Status..."
+TWILIO_STACK_NAME="TwilioIntegrationStack-$UNIQUE_SUFFIX"
+TWILIO_STATUS=$(aws cloudformation describe-stacks --stack-name $TWILIO_STACK_NAME --region $AWS_REGION --query "Stacks[0].Outputs[?OutputKey=='TwilioWebhookStatus'].OutputValue" --output text)
+
+echo "✅ Twilio Webhook Status: $TWILIO_STATUS"
+
+# 🚀 Step 9: Cleanup - Delete the CloudFormation Stack
 echo "🔹 Deleting CloudFormation Stack: $STACK_NAME..."
 aws cloudformation delete-stack --stack-name $STACK_NAME --region $AWS_REGION
 
-# 🚀 Step 8: Wait for Stack Deletion
+# 🚀 Step 10: Wait for Stack Deletion
 echo "⏳ Waiting for Main Stack deletion to complete..."
 aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME --region $AWS_REGION
 

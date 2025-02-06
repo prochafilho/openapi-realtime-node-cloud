@@ -17,7 +17,7 @@ Parameters:
 
   S3Bucket:
     Type: String
-    Description: "S3 Bucket where CloudFormation templates are stored"
+    Description: "S3 Bucket containing CloudFormation templates"
 
 Resources:
   ## ✅ IAM Role for Lambda
@@ -47,12 +47,12 @@ Resources:
     Properties:
       FunctionName: !Sub "GetLatestAmazonLinuxAmi-${UniqueSuffix}"
       Runtime: python3.9
-      Handler: index.lambda_handler
+      Handler: index.lambda_handler  # ✅ Fix: Set to `index.lambda_handler`
       Role: !GetAtt AmiLookupLambdaExecutionRole.Arn
       Timeout: 30
       Code:
         S3Bucket: !Ref S3Bucket
-        S3Key: "ami-lookup-lambda.zip"
+        S3Key: "ami_lookup_lambda.zip"  # ✅ Fix: Matches deploy script
 
   ## ✅ Custom Resource
   AmiLookup:
