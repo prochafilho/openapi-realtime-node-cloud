@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Main stack managing WebSocket server and Twilio integration"
+Description: "Main stack managing WebSocket server, AMI Lookup, and Twilio integration"
 
 Parameters:
   UniqueSuffix:
@@ -53,8 +53,20 @@ Parameters:
     Description: "S3 Bucket containing CloudFormation templates"
 
 Resources:
+  ## ✅ AMI Lookup Stack (New)
+  AmiLookupStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/ami-lookup-stack.yaml"
+      Parameters:
+        UniqueSuffix: !Ref UniqueSuffix
+        AWSAccountId: !Ref AWSAccountId
+        Region: !Ref Region
+
+  ## ✅ WebSocket Server Stack (Depends on AMI Lookup)
   WebSocketServerStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: AmiLookupStack
     Properties:
       TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/websocket-server-stack.yaml"
       Parameters:
@@ -66,7 +78,9 @@ Resources:
         SecretId: !Ref SecretId
         GitHubRepoURL: !Ref GitHubRepoURL
         AppDirectory: !Ref AppDirectory
+        AmiId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
 
+  ## ✅ Twilio Lambda Stack
   TwilioLambdaStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -79,6 +93,7 @@ Resources:
         TwilioAuthToken: !Ref TwilioAuthToken
         TwilioPhoneNumber: !Ref TwilioPhoneNumber
 
+  ## ✅ Twilio Integration Stack
   TwilioIntegrationStack:
     Type: AWS::CloudFormation::Stack
     DependsOn: [WebSocketServerStack, TwilioLambdaStack]

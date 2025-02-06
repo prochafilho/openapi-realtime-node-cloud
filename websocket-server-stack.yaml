@@ -36,9 +36,9 @@ Parameters:
     Default: "."
     Description: "Directory inside the GitHub repository"
 
-  AmiStackName:
+  S3Bucket:
     Type: String
-    Description: "Name of the AMI Lookup Stack"
+    Description: "S3 Bucket where the AMI Lookup stack is stored"
 
 Resources:
   ## ✅ Fetch the AMI ID from the AMI Lookup Stack
@@ -51,6 +51,27 @@ Resources:
         AWSAccountId: !Ref AWSAccountId
         Region: !Ref Region
 
+  ## ✅ Security Group for WebSocket Server
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow WebSocket and HTTP(S) traffic"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 8080  # WebSocket Port
+          ToPort: 8080
+          CidrIp: "0.0.0.0/0"
+
+  ## ✅ WebSocket Server Instance
   WebServerInstance:
     Type: "AWS::EC2::Instance"
     Properties:
@@ -74,6 +95,17 @@ Resources:
           npm install
           nohup node app.js > server.log 2>&1 &
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServerInstance --region ${AWS::Region} ${WebServerWaitHandle}
+
+  ## ✅ Wait Condition to Ensure Web Server Setup Completes
+  WebServerWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  WebServerWaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Handle: !Ref WebServerWaitHandle
+      Timeout: "600"
+      Count: 1
 
 Outputs:
   WebSocketPublicIP:
