@@ -22,18 +22,21 @@ else
     aws s3api create-bucket --bucket "$APP_BUCKET" --region "$AWS_REGION"
 fi
 
-# 🚀 Ensure the Lambda function ZIP package exists
-if [ ! -f "twilio-webhook-lambda.zip" ]; then
-    echo "🚀 Creating Lambda function package twilio-webhook-lambda.zip..."
-    zip twilio-webhook-lambda.zip twilio_webhook_lambda.py
-fi
-
 # ✅ Ensure the AMI Lookup Lambda ZIP file exists
 if [ -f "ami_lookup_lambda.py" ]; then
     echo "🚀 Creating AMI Lookup Lambda package ami_lookup_lambda.zip..."
     zip ami_lookup_lambda.zip ami_lookup_lambda.py
 else
     echo "❌ ERROR: ami_lookup_lambda.py not found! Deployment aborted."
+    exit 1
+fi
+
+# ✅ Ensure the Twilio Webhook Lambda ZIP file exists (RESTORED!)
+if [ -f "twilio_webhook_lambda.py" ]; then
+    echo "🚀 Creating Twilio Webhook Lambda package twilio-webhook-lambda.zip..."
+    zip twilio-webhook-lambda.zip twilio_webhook_lambda.py
+else
+    echo "❌ ERROR: twilio_webhook_lambda.py not found! Deployment aborted."
     exit 1
 fi
 
@@ -44,8 +47,8 @@ aws s3 cp websocket-server-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp twilio-lambda-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp twilio-integration-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
 aws s3 cp ami-lookup-stack.yaml s3://$APP_BUCKET/ --region $AWS_REGION
-aws s3 cp twilio-webhook-lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION
-aws s3 cp ami_lookup_lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION  # ✅ Fix: Ensured correct naming
+aws s3 cp ami_lookup_lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION
+aws s3 cp twilio-webhook-lambda.zip s3://$APP_BUCKET/ --region $AWS_REGION  # ✅ Fix: RESTORED
 
 # 🚀 Step 4: Deploy Main CloudFormation Stack
 echo "🔹 Deploying Main CloudFormation Stack: $STACK_NAME..."

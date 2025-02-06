@@ -82,9 +82,22 @@ Resources:
         AmiId: !GetAtt AmiLookupStack.Outputs.LatestAmazonLinuxAmi
         S3Bucket: !Ref S3Bucket
 
+  ## ✅ Wait Condition Handle for CloudFormation
+  WebSocketServerWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  ## ✅ Wait Condition to Ensure WebSocket Server Completes Before Stack Proceeds (RESTORED!)
+  WebSocketServerWaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Handle: !Ref WebSocketServerWaitHandle
+      Timeout: "300"
+    DependsOn: WebSocketServerStack
+
   ## ✅ Twilio Lambda Stack
   TwilioLambdaStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: WebSocketServerStack
     Properties:
       TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-lambda-stack.yaml"
       Parameters:
@@ -99,7 +112,7 @@ Resources:
   ## ✅ Twilio Integration Stack
   TwilioIntegrationStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: [WebSocketServerStack, TwilioLambdaStack]
+    DependsOn: [TwilioLambdaStack]
     Properties:
       TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${S3Bucket}/twilio-integration-stack.yaml"
       Parameters:
